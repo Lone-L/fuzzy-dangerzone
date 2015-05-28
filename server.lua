@@ -11,7 +11,7 @@ serverTimeout = 28000;
 --WAVEFORM--
 --CONSTANT--
 waveform_pin = 3;
-PERIOD = 23;--500;
+PERIOD = 235000;--500;
 
 IDLE_WIDTH_M = 1500;
 IDLE_WIDTH_S = 1220;
@@ -30,47 +30,19 @@ numeric_char_0 = string.byte('0');
 
 local data;
 
-
+-- setting access point
 function setAP() 
 	print("setting AP SSID: " .. cfg.ssid .. "PASS: " .. "Can't tell :D");
 	wifi.setmode(wifi.STATIONAP);
 	wifi.ap.config(cfg);
 end 
 
-
--- listing access point function 
-local listap = function(t) 
-	if (type(t) ~= "table") then
-		print("not table");
-		return;
-	end;
-
-	for key,value in pairs(t) do
-		tmr.wdclr();
-        --if string.find(key , "myssid") then
-        local _SSID = key 
-        local _BSSID=""
-        local _RSSI=""
-        local _enc=""
-        local _chan=""
-        _enc, _RSSI, _BSSID, _chan = string.match(value,
-            "(%d),(-?%d+),(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x),(%d+)")
-        print(_SSID..":\t\t".._BSSID..",".._RSSI.."\n")
-        _enc=nil _chan=nil
-        _SSID=nil _RSSI=nil _BSSID=nil
-        --end
-    end
-end 
-
 --Setting up AP
 setAP();
 
---Setting up TCP server
+--Setting up UDP server
 server = net.createserver(net.UDP, serverTimeout);
 
---list AP test chode
-wifi.sta.getap(listap);
-listap=nil;
 
 -- generate waveform 
 gpio.mode(waveform_pin, gpio.OUTPUT);
@@ -104,18 +76,26 @@ end
 function getData()
 	-- listen on port 133
 	server:listen(133, function(conn)
-		conn:on("receive", function(conn, d) data = d print(data) end);
-		--conn:send(data) -- echo test
+		conn:on("receive", function(conn, d) data = d print(data) end); -- store d in global variable data and print data
+		--conn:send(data) -- echo test									-- event driven
 		end
 	) 
 end 
 
-function modifyAlarm()
+
+-- motion and steering are coded as follows
+-- motion can range between 0 - 9, 0 being MIN (max speed backwards) and 9 being MAX(max speed forwards)
+-- the value 5 represents IDLE_WIDTH_M
+-- steering can range between 0 - 9, 0 being the MIN (max turning left) and 9 being Max( max turning right)
+-- 5 represents straight IDLE_WIDTH_S
+-- note this function changes the global variables steering and motion which are used to generate the wave form
+function modifyMotionParameters()
 	getData();
 
-	m = string.byte(data, 1) - numeric_char_0;
-	s = string.byte(data, 2) - numeric_char_0;
+	m = string.byte(data, 1) - numeric_char_0; -- get numeric value of motion code
+	s = string.byte(data, 2) - numeric_char_0; -- get numeric value of steering code
 
+	-- TODO: modify to add different speeds
 	if (m == 0) then
 		motion = MIN;
 	elseif (m == 1) then 
@@ -126,16 +106,18 @@ function modifyAlarm()
 		motion = IDLE_WIDTH_M;
 	end 
 
+
+	-- modify steering global variable
 	if (s == 5 or s > 9 or s < 0) then
 		steering = IDLE_WIDTH_S;
 	else 
-		steering = min + steering_resolution * s;
+		steering = min + steering_resolution * s; 
 	end 
 end 
 
 start = tmr.now();
 
-tmr.alarm(1, PERIOD, 1, function() 
+tmr.alarm(1, 22, 1, function() 
 	if (PERIOD - start - tmr.now() > 0) then
 		waveform();
 	else 
@@ -143,7 +125,7 @@ tmr.alarm(1, PERIOD, 1, function()
 	end 
 end)
 
-tmr.alarm(1, PERIOD, 1, modifyAlarm);
+tmr.alarm(1, PERIOD, 1, modifyMotionParameters);
 
 	
 
